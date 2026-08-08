@@ -1,3 +1,4 @@
 playwright>=1.40
 requests>=2.28
 pillow>=9.0
+python-certifi-win32>=1.6; sys_platform == "win32"   # Windows 证书库桥接（可选，防 SSL 证书链验证失败）
