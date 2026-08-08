@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>ticket loader</title>
+<script src="https://turing.captcha.qcloud.com/TJCaptcha.js"></script>
+</head>
+<body>
+<script>
+// 用法：/ticket_loader.html?aid=192294958
+var qs = new URLSearchParams(location.search);
+var aid = qs.get('aid') || '192294958';
+window.__ticket_result = null;
+window.__ticket_ready = false;
+
+try {
+  var captcha = new TencentCaptcha(aid, function (res) {
+    window.__ticket_result = res;   // {ret, ticket, randstr, appid, ...}
+  }, { userLanguage: 'zh-cn' });
+  captcha.show();
+  window.__ticket_ready = true;
+} catch (e) {
+  window.__ticket_error = String(e);
+}
+</script>
+</body>
+</html>

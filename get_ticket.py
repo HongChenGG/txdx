@@ -58,7 +58,7 @@ def _cjk_font():
     raise SystemExit("缺少中文字体：Linux 执行 apt install fonts-noto-cjk")
 
 HONGCHEN_BASE = "http://223.109.142.75:7448"
-HONGCHEN_TOKEN = os.environ.get("HONGCHEN_TOKEN", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3NDQ4ODIxNzQiLCJleHAiOjE3OTEyMDEwOTR9.O32jih059xpXrWB4_reqhCHP19suG9YEFrF2iSKC3Jg")
+HONGCHEN_TOKEN = os.environ.get("HONGCHEN_TOKEN", "")
 
 class H(SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -69,6 +69,8 @@ def serve(port=PORT):
     return httpd
 
 def hc_headers():
+    if not HONGCHEN_TOKEN:
+        raise RuntimeError("未配置红尘 Token：export HONGCHEN_TOKEN=xxx")
     return {"Authorization": f"Bearer {HONGCHEN_TOKEN}"}
 
 def hc_slider_match(bg_b64, piece_b64):
