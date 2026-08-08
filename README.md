@@ -74,3 +74,16 @@ txdx/
 → 下载图 → 红尘识别（点选 order / 滑块 match）
 → 类人点击/拖动 → tgJCap 生成 collect/eks/pow 提交 → 回调 ticket
 ```
+
+## 并发注意（txdx 浏览器方式）
+
+- playwright sync API **线程不安全** → 多并发用**多进程**（multiprocessing / 每 worker 一个端口）
+- 每实例必须独立 `--port`（loader 端口），`__init__.py` 的 solve() 自动分配
+- 示例（4 进程并发）：
+  ```python
+  from multiprocessing import Pool
+  def f(p): return solve(aid="192037696", proxy=p, headless=True)
+  with Pool(4) as pool:
+      print(pool.map(f, ["http://ip1:port", "http://ip2:port", ...]))
+  ```
+- 腾讯风控：同 IP 高频会收窄容差 → **每 IP 限速 + IP 池轮换**
