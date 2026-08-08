@@ -73,12 +73,21 @@ def hc_headers():
         raise RuntimeError("未配置红尘 Token：export HONGCHEN_TOKEN=xxx")
     return {"Authorization": f"Bearer {HONGCHEN_TOKEN}"}
 
-def hc_slider_match(bg_b64, piece_b64):
+
+def _proxies_d(proxy):
+    if not proxy:
+        return None
+    p = proxy if "://" in proxy else "http://" + proxy
+    return {"http": p, "https": p}
+
+
+def hc_slider_match(bg_b64, piece_b64, proxy=None):
     r = requests.post(f"{HONGCHEN_BASE}/api/slider/match",
                       json={"target_base64": piece_b64, "background_base64": bg_b64},
-                      headers=hc_headers(), timeout=40)
+                      headers=hc_headers(), proxies=_proxies_d(proxy), timeout=40)
     r.raise_for_status()
     return r.json()["result"]
+
 
 def crop_piece(sprite_bytes, sprite_pos, size_2d):
     """从 sprite（img_index=0）按 fg_elem_list 的 sprite_pos 裁剪拼图块"""
@@ -91,18 +100,22 @@ def crop_piece(sprite_bytes, sprite_pos, size_2d):
     im.crop((x, y, x + w, y + h)).save(buf, "PNG")
     return base64.b64encode(buf.getvalue()).decode()
 
-def hc_detection_text(img_b64):
+
+def hc_detection_text(img_b64, proxy=None):
     r = requests.post(f"{HONGCHEN_BASE}/api/detection/text",
-                      json={"img_base64": img_b64}, headers=hc_headers(), timeout=40)
+                      json={"img_base64": img_b64}, headers=hc_headers(),
+                      proxies=_proxies_d(proxy), timeout=40)
     r.raise_for_status()
     return r.json()["result"]
 
-def hc_text_order(render_b64, bg_b64):
+
+def hc_text_order(render_b64, bg_b64, proxy=None):
     r = requests.post(f"{HONGCHEN_BASE}/api/detection/text/order",
                       json={"order_img_base64": render_b64, "target_img_base64": bg_b64},
-                      headers=hc_headers(), timeout=90)
+                      headers=hc_headers(), proxies=_proxies_d(proxy), timeout=90)
     r.raise_for_status()
     return r.json()["result"]
+
 
 def img_b64(png_bytes):
     return base64.b64encode(png_bytes).decode()
@@ -237,7 +250,7 @@ def get_ticket(appid, max_try=3, headless=False, timeout=45, proxy=None, port=80
                 size_2d = (piece_cfg or {}).get("size_2d")
                 piece_b64 = crop_piece(state["piece_png"], sprite_pos, size_2d) if sprite_pos and size_2d \
                     else img_b64(state["piece_png"])
-                res = hc_slider_match(img_b64(state["bg_png"]), piece_b64)
+                res = hc_slider_match(img_b64(state["bg_png"]), piece_b64, proxy=proxy)
                 target = res.get("target")
                 if not target:
                     browser.close()
@@ -291,13 +304,13 @@ def get_ticket(appid, max_try=3, headless=False, timeout=45, proxy=None, port=80
                             d.text((x, 20), ch, font=f, fill=(0, 0, 0))
                             x += 130
                         b = _io.BytesIO(); im.save(b, "PNG")
-                        boxes = hc_text_order(base64.b64encode(b.getvalue()).decode(), img_b64(state["bg_png"]))
+                        boxes = hc_text_order(base64.b64encode(b.getvalue()).decode(), img_b64(state["bg_png"]), proxy=proxy)
                         if boxes and len(boxes) >= len(chars):
                             pts = [{"box": boxes[i], "ch": ch} for i, ch in enumerate(chars)]
                     except Exception as e:
                         print(f"[solve] order api fail: {e}")
                 if not pts:
-                    res = hc_detection_text(img_b64(state["bg_png"]))
+                    res = hc_detection_text(img_b64(state["bg_png"]), proxy=proxy)
                     pts = res if isinstance(res, list) else []
                 print(f"[solve] pts: {json.dumps(pts, ensure_ascii=False)[:250]}")
                 if not pts:

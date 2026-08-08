@@ -6,7 +6,7 @@
 
 - **真实浏览器**（Chrome/Chromium + playwright）加载官方 captcha，tgJCap 真实执行 → collect/eks/pow 全自动
 - **支持 Linux 无头**：`--headless`（实测出票）+ 中文字体自动探测
-- **支持传 IP**：`--proxy http://user:pass@ip:port`（腾讯请求走代理，本地 loader 直连）
+- **支持传 IP**：`--proxy http://user:pass@ip:port`（腾讯请求 + 红尘打码 API 全走代理）
 - **打码默认红尘**：点选字符顺序 + 框定位（order API）；可自定义
 - **类人轨迹**：真实样本统计的点击/拖动轨迹
 
