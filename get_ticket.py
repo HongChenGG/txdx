@@ -57,8 +57,10 @@ def _cjk_font():
             return p
     raise SystemExit("缺少中文字体：Linux 执行 apt install fonts-noto-cjk")
 
-HONGCHEN_BASE = "http://223.109.142.75:7448"
-HONGCHEN_TOKEN = os.environ.get("HONGCHEN_TOKEN", "")
+HONGCHEN_BASE = "http://127.0.0.1:7448"
+HONGCHEN_USER = os.environ.get("HONGCHEN_USER", "744882174")
+HONGCHEN_PASS = os.environ.get("HONGCHEN_PASS", "A744882174")
+_HC_JWT = {"token": None}
 
 class H(SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -68,10 +70,20 @@ def serve(port=PORT):
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd
 
+def hc_login():
+    """登录 AntiWebApi 获取 JWT（100 年有效，缓存一次）"""
+    if _HC_JWT["token"]:
+        return _HC_JWT["token"]
+    import urllib.parse
+    r = requests.post(f"{HONGCHEN_BASE}/api/login",
+                      data={"username": HONGCHEN_USER, "password": HONGCHEN_PASS},
+                      timeout=15)
+    r.raise_for_status()
+    _HC_JWT["token"] = r.json()["access_token"]
+    return _HC_JWT["token"]
+
 def hc_headers():
-    if not HONGCHEN_TOKEN:
-        raise RuntimeError("未配置红尘 Token：export HONGCHEN_TOKEN=xxx")
-    return {"Authorization": f"Bearer {HONGCHEN_TOKEN}"}
+    return {"Authorization": f"Bearer {hc_login()}"}
 
 
 def _proxies_d(proxy):
