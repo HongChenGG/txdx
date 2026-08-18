@@ -1,89 +1,104 @@
-# 腾讯文字点选验证码 自动出票模块（浏览器方式）
+# txdx — 腾讯文字点选验证码纯协议求解
 
-**实测**：点选 2404（AppId 192037696）headless + 代理连续出票 ✅；滑块 2401 同样支持 ✅。
+AppId `192037696`、`subcapclass=2404` 的浏览器外协议实现。默认链路不导入
+Playwright，也不启动 Chrome/Chromium：
 
-## 特点
+```text
+prehandle → 背景图 → 同轮 tdc.js → Node/jsdom collect+eks → PoW → verify
+```
 
-- **真实浏览器**（Chrome/Chromium + playwright）加载官方 captcha，tgJCap 真实执行 → collect/eks/pow 全自动
-- **支持 Linux 无头**：`--headless`（实测出票）+ 中文字体自动探测
-- **支持传 IP**：`--proxy http://user:pass@ip:port`（腾讯请求 + 红尘打码 API 全走代理）
-- **打码默认红尘**：点选字符顺序 + 框定位（order API）；可自定义
-- **类人轨迹**：真实样本统计的点击/拖动轨迹
+已用全新 `sess`、单次 verify 在线验证返回 `errorCode=0`。浏览器实现仍保留，
+但只有显式指定 `mode="browser"` 时才延迟导入。完整脱敏验证记录在主项目
+`capture/protocol_success_latest.json`。
 
 ## 安装
 
-```bash
-pip install playwright requests pillow
-playwright install chromium            # 或 apt install chromium
-apt install fonts-noto-cjk             # Linux 中文字体（点选指令渲染必需）
-```
-
-## 用法
-
-### 命令行（复用 get_ticket.py）
+需要 Python、Node.js，以及红尘识别 Token：
 
 ```bash
-# 点选（无头 + 代理）
-python get_ticket.py --aid 192037696 --headless --proxy http://ip:port
-
-# 滑块
-python get_ticket.py --aid 192294958 --headless --proxy http://ip:port
-
-# 本机有头调试
-python get_ticket.py --aid 192037696
-
-# 多实例并发（不同 --port）
-python get_ticket.py --aid 192037696 --headless --port 8081
+pip install -r requirements.txt
+cd tdc_js && npm ci
+export HONGCHEN_TOKEN='你的 token'
 ```
 
-### Python 调用
+`tdc_js` 固定使用 `jsdom@25.0.1`。生产链只需要该依赖，不需要浏览器或
+`node-canvas`。
+
+## 命令行
+
+```bash
+python -m txdx.cli --aid 192037696 --rounds 1
+python -m txdx.cli --aid 192037696 --proxy http://user:pass@ip:port
+```
+
+## Python
 
 ```python
 from txdx import solve
 
-r = solve(aid="192037696", proxy="http://ip:port", headless=True)
-print(r["ticket"], r["randstr"])
+result = solve(
+    aid="192037696",
+    entry_url="https://sssjz.guaishouyiyou.cn/#/pages/index",
+    proxy=None,       # None 表示直连
+    rounds=1,
+)
+print(result["ticket"], result["randstr"])
 ```
 
-### 并发
+默认 `mode="protocol"`。显式浏览器回退：
 
-- 每个验证一个浏览器实例，互不干扰
-- **多实例必须不同 `--port`**（本地 loader 端口）
-- 腾讯风控：同一 IP 高频会收窄容差 → **每 IP 限速 + IP 池轮换**
-
-## 环境变量
-
-| 变量 | 说明 |
-|---|---|
-| `HONGCHEN_TOKEN` | 红尘打码 token（必填） |
-| `CHROME_PATH` | 自定义 Chrome/Chromium 路径（默认自动探测） |
-
-## 架构
-
+```python
+result = solve(aid="192037696", mode="browser", headless=True)
 ```
+
+浏览器回退需要另行安装 `playwright` 和 Chromium；纯协议路径不需要。
+
+## HTTP 服务
+
+```bash
+python -m txdx.server --host 0.0.0.0 --port 9000 --workers 1
+```
+
+```http
+POST /solve
+Content-Type: application/json
+
+{
+  "aid": "192037696",
+  "entry_url": "https://sssjz.guaishouyiyou.cn/#/pages/index",
+  "ip": null,
+  "rounds": 1,
+  "gap_seconds": 60
+}
+```
+
+## 协议约束
+
+- `tkid` 在 prehandle 前生成，并在 prehandle、图片 URL、verify 三处复用。
+- `window.TDC.getInfo().tokenid` 不是页面 `tkid`，仅作兼容回退。
+- verify `ans` 与 TDC 行为事件必须来自同一个显示点击点。
+- ClickEl mark 原生尺寸为 32；330px 背景中的显示尺寸为 29.333px。
+- 当前轨迹为 32 个事件、20 个 `mousemove`，并使用 Chrome 风格整数 offset。
+- 每个新 `sess` 只允许一次 verify。失败后不可复用同一会话扫坐标。
+- supplied proxy 会原样用于腾讯、图片、TDC、verify 和红尘识别；`None` 为直连。
+- 服务端错误码不是公开契约，不能把 `12`、`50`、`9` 固定解释成单一原因。
+
+## 许可证与来源
+
+本仓库包含基于 `hailan09/crackTCaptcha` 修改的 jsdom/TDC 执行代码，按
+GPL-3.0-or-later 分发。具体来源和上游版本见 `NOTICE`，完整条款见 `LICENSE`。
+
+## 目录
+
+```text
 txdx/
-├── __init__.py     solve(aid, proxy, headless, ...) 主入口
-├── get_ticket.py   浏览器出票核心（loader/prehandle/识别/点击/回调）
-└── tests/          测试用例
+├── __init__.py          默认入口及显式 browser dispatch
+├── protocol_solver.py   纯协议编排及 ClickEl 坐标公式
+├── protocol.py          prehandle / image / TDC / PoW / verify
+├── collect_gen.py       本地同轮 TDC 驱动
+├── hongchen.py          默认识别 Provider
+├── provider.py          可替换识别器接口
+├── tdc_js/              jsdom 环境与点选事件驱动
+├── get_ticket.py        旧浏览器回退
+└── server.py            FastAPI 服务
 ```
-
-流程：
-```
-本地 loader（host-resolver 白名单→127.0.0.1）
-→ 浏览器加载 tgJCap → 截获 prehandle 协议 → 解析题目
-→ 下载图 → 红尘识别（点选 order / 滑块 match）
-→ 类人点击/拖动 → tgJCap 生成 collect/eks/pow 提交 → 回调 ticket
-```
-
-## 并发注意（txdx 浏览器方式）
-
-- playwright sync API **线程不安全** → 多并发用**多进程**（multiprocessing / 每 worker 一个端口）
-- 每实例必须独立 `--port`（loader 端口），`__init__.py` 的 solve() 自动分配
-- 示例（4 进程并发）：
-  ```python
-  from multiprocessing import Pool
-  def f(p): return solve(aid="192037696", proxy=p, headless=True)
-  with Pool(4) as pool:
-      print(pool.map(f, ["http://ip1:port", "http://ip2:port", ...]))
-  ```
-- 腾讯风控：同 IP 高频会收窄容差 → **每 IP 限速 + IP 池轮换**

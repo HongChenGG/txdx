@@ -1,4 +1,10 @@
-playwright>=1.40
+curl_cffi>=0.7
 requests>=2.28
 pillow>=9.0
-python-certifi-win32>=1.6; sys_platform == "win32"   # Windows 证书库桥接（可选，防 SSL 证书链验证失败）
+fastapi>=0.110
+uvicorn>=0.29
+pydantic>=2.0
+python-certifi-win32>=1.6; sys_platform == "win32"
+
+# Optional browser fallback only:
+# playwright>=1.40

@@ -1,0 +1,12 @@
+txdx
+====
+
+This distribution includes modified code derived from crack-tcaptcha:
+https://github.com/hailan09/crackTCaptcha
+
+Upstream project license: GNU General Public License v3.0 or later.
+The modified jsdom/TDC execution bridge and related environment code in this
+repository are distributed under the same terms. See LICENSE.
+
+Upstream snapshot inspected during this work:
+a67b6e9e90b0828d1ccf38d46e113a1aa0e69b66
