@@ -31,6 +31,17 @@ python -m txdx.cli --aid 192037696 --rounds 1
 python -m txdx.cli --aid 192037696 --proxy http://user:pass@ip:port
 ```
 
+## 性能（并行编排）
+
+`solve_protocol` 在 prehandle 后立即并行启动两路：
+
+- Node/jsdom 提前 eval 同轮 `tdc.js` 并开始页面年龄计时；
+- 红尘识别 + PoW 同时进行，坐标就绪后写入 `clicks_file`，驱动再派发事件。
+
+事件序列（32 个事件、20 个 `mousemove`）与串行版逐字节一致，只消除了识别阶段
+的串行等待。离线固定向量端到端约 4.7–5.2s（其中页面年龄 1.2–2.0s、事件轨迹约
+2s 为保持真实感的必要开销；继续压缩会改变服务器可见的时间轴，属于风险决策）。
+
 ## Python
 
 ```python

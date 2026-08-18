@@ -94,7 +94,7 @@ async function main() {
   for await (const chunk of process.stdin) input += chunk;
   const {
     tdc_url, ua, sid, entry_url, clicks, debug, replay, tdc_local,
-    debug_collectors, skip_events, collector_overrides,
+    debug_collectors, skip_events, collector_overrides, clicks_file,
   } = JSON.parse(input);
 
   // debug 模式：hook JSON.stringify 抓 mGetData 的明文源头 {cd, od, sd}（反汇编 fn34 实证）
@@ -508,13 +508,34 @@ async function main() {
     }
   }
 
+  // —— clicks 解析（并行模式：驱动先跑页面年龄/ambient，识别完成后再写入坐标）——
+  // Python 在识别、PoW 期间让驱动提前 eval TDC 并开始页面年龄计时；
+  // 坐标就绪后写入 clicks_file，驱动读后再派发事件。事件序列本身不变。
+  let resolvedClicks = clicks; // 解构绑定为 const，这里必须用可变变量
+  if (clicks_file) {
+    const deadline = Date.now() + 30000;
+    for (;;) {
+      try {
+        const raw = fs.readFileSync(clicks_file, "utf8");
+        if (raw && raw.trim()) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) { resolvedClicks = parsed; break; }
+        }
+      } catch (_) { }
+      if (Date.now() > deadline) {
+        throw new Error("clicks_file timeout: " + clicks_file);
+      }
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  }
+
   // —— 事件流 ——
   let cx = ambientX, cy = ambientY;
 
-  for (let ci = 0; ci < clicks.length; ci++) {
-    const c = clicks[ci];
+  for (let ci = 0; ci < resolvedClicks.length; ci++) {
+    const c = resolvedClicks[ci];
     const tx = Math.round(c.x * 10) / 10, ty = Math.round(c.y * 10) / 10;
-    const steps = ci === 0 ? 6 : (ci === clicks.length - 1 ? 4 : 3);
+    const steps = ci === 0 ? 6 : (ci === resolvedClicks.length - 1 ? 4 : 3);
     for (let i = 1; i <= steps; i++) {
       const p = i / steps;
       t += 6;

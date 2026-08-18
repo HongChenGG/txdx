@@ -19,8 +19,13 @@ def gen_collect_eks(
     *,
     ua=None,
     confirm_last=True,
+    clicks_file=None,
 ):
-    """Return ``(collect, eks, tdc_tokenid)`` without any Node network request."""
+    """Return ``(collect, eks, tdc_tokenid)`` without any Node network request.
+
+    ``clicks_file``：并行模式下由 Python 稍后写入坐标，驱动先启动并开始
+    页面年龄计时，再轮询该文件。传入后 ``clicks`` 可为空列表。
+    """
     del confirm_last
     tdc_local = os.path.join(workdir, "tdc.js")
     if not os.path.isfile(tdc_local):
@@ -33,6 +38,7 @@ def gen_collect_eks(
         "sid": round_data.get("sid", ""),
         "entry_url": entry_url,
         "clicks": clicks,
+        "clicks_file": clicks_file,
     })
     driver = os.path.join(TDC_JS_DIR, "click_driver.js")
     result = subprocess.run(

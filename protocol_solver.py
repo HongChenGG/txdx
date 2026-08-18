@@ -2,9 +2,11 @@
 """Browser-free Tencent 2404 solver."""
 import json
 import math
+import os
 import random
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from .collect_gen import gen_collect_eks
 from .hongchen import HongchenProvider
@@ -85,18 +87,40 @@ def solve_protocol(
                     last_error = "unsupported subcapclass %s" % round_data.get("subcapclass", "")
                 else:
                     bg_path = get_bg(round_data, workdir, proxies, entry_url=entry_url)
-                    boxes = provider.solve_click(round_data["instruction"], bg_path, proxy=proxy)
+                    download_tdc(round_data["tdc_path"], workdir, proxies, entry_url=entry_url)
+                    # 并行：collect 生成（Node 提前 eval TDC、跑页面年龄/ambient）
+                    # 与 识别+PoW 同时进行，坐标就绪后写入 clicks_file。
+                    clicks_file = os.path.join(workdir, "clicks.json")
+                    boxes = []
+                    answers = []
+                    with ThreadPoolExecutor(max_workers=2) as pool:
+                        collect_fut = pool.submit(
+                            gen_collect_eks,
+                            round_data,
+                            entry_url,
+                            workdir,
+                            [],
+                            clicks_file=clicks_file,
+                            confirm_last=True,
+                        )
+                        try:
+                            boxes = provider.solve_click(round_data["instruction"], bg_path, proxy=proxy)
+                            pow_answer, pow_calc = solve_pow(round_data["pow"])
+                            if boxes:
+                                answers, clicks = _build_answer_clicks(
+                                    boxes,
+                                    bg_size=tuple(round_data.get("bg_cfg", {}).get("size_2d") or (672, 480)),
+                                    confirm=True,
+                                )
+                                with open(clicks_file, "w", encoding="utf-8") as fh:
+                                    json.dump(clicks, fh)
+                        finally:
+                            # 识别失败也写入空列表，释放驱动轮询，避免会话卡住
+                            if not os.path.exists(clicks_file):
+                                with open(clicks_file, "w", encoding="utf-8") as fh:
+                                    json.dump([], fh)
+                        collect, eks, tdc_tokenid = collect_fut.result(timeout=60)
                     if boxes:
-                        answers, clicks = _build_answer_clicks(
-                            boxes,
-                            bg_size=tuple(round_data.get("bg_cfg", {}).get("size_2d") or (672, 480)),
-                            confirm=True,
-                        )
-                        download_tdc(round_data["tdc_path"], workdir, proxies, entry_url=entry_url)
-                        collect, eks, tdc_tokenid = gen_collect_eks(
-                            round_data, entry_url, workdir, clicks, confirm_last=True
-                        )
-                        pow_answer, pow_calc = solve_pow(round_data["pow"])
                         if verbose:
                             print(
                                 "[protocol] instruction=%s ans=%s collect=%d eks=%d tkid=%s"

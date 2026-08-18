@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
+import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from txdx.collect_gen import gen_collect_eks as real_gen_collect_eks
 from txdx.protocol_solver import _build_answer_clicks, solve_protocol
 
 
@@ -96,6 +99,8 @@ class ProtocolSolverTest(unittest.TestCase):
         with (
             patch("txdx.protocol_solver.prehandle", return_value=(round_data, None)),
             patch("txdx.protocol_solver.get_bg", return_value="bg.png"),
+            patch("txdx.protocol_solver.download_tdc"),
+            patch("txdx.protocol_solver.gen_collect_eks"),
             patch("txdx.protocol_solver.verify") as verify,
         ):
             result = solve_protocol(
@@ -147,6 +152,68 @@ class ProtocolSolverTest(unittest.TestCase):
         self.assertEqual(result["errorCode"], "unsupported subcapclass 2401")
         get_bg.assert_not_called()
         verify.assert_not_called()
+
+    def test_collect_generation_overlaps_recognition(self):
+        """识别耗时期间 collect 生成必须已在进行（串行时 gen_start > recog_end）。"""
+        fixture_value = os.environ.get("TXDX_TDC_FIXTURE_DIR")
+        fixture_dir = Path(fixture_value) if fixture_value else None
+        if fixture_dir is None or not fixture_dir.is_dir():
+            self.skipTest("set TXDX_TDC_FIXTURE_DIR to run captured-vector regressions")
+        tdc_fixture = fixture_dir / "tdc_same_round.js"
+        if not tdc_fixture.is_file():
+            self.skipTest("fixture tdc_same_round.js missing")
+
+        round_data = {
+            "sess": "fresh-session",
+            "tkid": "page-token",
+            "sid": "sid",
+            "instruction": "请依次点击：甲 乙 丙",
+            "tdc_path": "/tdc.js",
+            "pow": {"prefix": "p", "md5": "m"},
+            "bg_cfg": {"size_2d": [672, 480]},
+            "subcapclass": "2404",
+        }
+        marks = {}
+
+        class SlowProvider:
+            def solve_click(self, instruction, bg_path, proxy=None):
+                marks["recog_start"] = time.monotonic()
+                time.sleep(1.2)
+                marks["recog_end"] = time.monotonic()
+                return [[10, 20, 40, 50], [50, 60, 80, 90], [90, 100, 120, 130]]
+
+        def fake_download(tdc_path, workdir, proxies, entry_url=""):
+            Path(workdir, "tdc.js").write_bytes(tdc_fixture.read_bytes())
+
+        def wrapped_gen(*args, **kwargs):
+            marks["gen_start"] = time.monotonic()
+            out = real_gen_collect_eks(*args, **kwargs)
+            marks["gen_end"] = time.monotonic()
+            return out
+
+        with (
+            patch("txdx.protocol_solver.prehandle", return_value=(round_data, None)),
+            patch("txdx.protocol_solver.get_bg", return_value="bg.png"),
+            patch("txdx.protocol_solver.download_tdc", side_effect=fake_download),
+            patch("txdx.protocol_solver.gen_collect_eks", side_effect=wrapped_gen),
+            patch("txdx.protocol_solver.solve_pow", return_value=("pow", 350)),
+            patch(
+                "txdx.protocol_solver.verify",
+                return_value={"errorCode": "0", "ticket": "ticket", "randstr": "@r"},
+            ),
+        ):
+            result = solve_protocol(
+                aid="192037696",
+                entry_url=ENTRY,
+                captcha_provider=SlowProvider(),
+                gap_seconds=0,
+                max_rounds=1,
+                verbose=False,
+            )
+
+        self.assertTrue(result["success"])
+        self.assertIn("gen_start", marks)
+        self.assertLess(marks["gen_start"], marks["recog_end"])
 
     def test_failure_preserves_observed_error_code(self):
         round_data = {
