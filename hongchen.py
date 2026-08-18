@@ -38,10 +38,33 @@ def _parse_instruction(instruction):
 
 def _render_order_line(chars):
     """把指令字渲染成一行大字距图（/api/detection/text/order 对这种输入定位最准）。"""
-    try:
-        f = ImageFont.truetype("C:/Windows/Fonts/msyhbd.ttc", 48)
-    except Exception:
-        f = ImageFont.truetype("C:/Windows/Fonts/simhei.ttf", 48)
+    # 跨平台字体探测：Windows → Linux 中文字体
+    import glob
+    font_candidates = [
+        "C:/Windows/Fonts/msyhbd.ttc",
+        "C:/Windows/Fonts/simhei.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSerifCJK-Bold.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/truetype/arphic/uming.ttc",
+    ]
+    f = None
+    for cand in font_candidates:
+        try:
+            f = ImageFont.truetype(cand, 48)
+            break
+        except Exception:
+            continue
+    if f is None:
+        # 兜底：任意 CJK 字体
+        for path in glob.glob("/usr/share/fonts/**/*.tt[cf]", recursive=True):
+            try:
+                f = ImageFont.truetype(path, 48)
+                break
+            except Exception:
+                continue
+    if f is None:
+        raise RuntimeError("缺少中文字体：apt install fonts-noto-cjk")
     im = Image.new("RGB", (400, 120), (255, 255, 255))
     d = ImageDraw.Draw(im)
     x = 10
